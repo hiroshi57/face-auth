@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>顔認証システム</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;800&display=swap');
+
+    :root {
+      --bg: #090a0e;
+      --s1: #111218;
+      --s2: #181920;
+      --border: #1f2030;
+      --a1: #6c63ff;
+      --a2: #3df0be;
+      --text: #e2e3f0;
+      --muted: #4a4b66;
+      --ok: #3df0be;
+      --ng: #f05f5f;
+      --warn: #f0c040;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Syne', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ─── ヘッダー ─── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 32px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+      position: sticky;
+      top: 0;
+      z-index: 200;
+    }
+
+    .logo {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 16px; font-weight: 800; letter-spacing: -.3px;
+    }
+
+    .eye {
+      width: 30px; height: 30px;
+      border: 2px solid var(--a1);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .eye::after {
+      content: ''; width: 10px; height: 10px;
+      background: var(--a1); border-radius: 50%;
+    }
+
+    .header-actions { display: flex; align-items: center; gap: 12px; }
+
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--ok);
+      box-shadow: 0 0 6px var(--ok);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    .btn-sm {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px; letter-spacing: 1px;
+      padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer;
+      background: var(--s2); color: var(--muted);
+      border: 1px solid var(--border);
+      transition: all .15s;
+    }
+    .btn-sm:hover { border-color: var(--a1); color: var(--text); }
+    .btn-sm.active { background: var(--a1); color: #fff; border-color: var(--a1); }
+
+    /* ─── メインレイアウト ─── */
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 0;
+      min-height: calc(100vh - 63px);
+    }
+
+    /* ─── 左カラム（メイン操作） ─── */
+    .main-col {
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+      border-right: 1px solid var(--border);
+    }
+
+    /* ─── 右カラム（ユーザー一覧 + 設定） ─── */
+    .side-col {
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ─── セクションタイトル ─── */
+    .sec-title {
+      font-size: 13px; font-weight: 800; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--muted);
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .tag {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px; font-weight: 400;
+      padding: 2px 7px; border-radius: 4px; letter-spacing: 1px;
+    }
+    .tag-purple { color:var(--a1); background:rgba(108,99,255,.1); border:1px solid rgba(108,99,255,.25); }
+    .tag-green  { color:var(--ok);  background:rgba(61,240,190,.08); border:1px solid rgba(61,240,190,.2); }
+    .tag-gray   { color:var(--muted); background:var(--s2); border:1px solid var(--border); }
+
+    /* ─── 2カラム（カメラ並列） ─── */
+    .cam-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .cam-card {
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .cam-wrap {
+      position: relative;
+      border-radius: 10px; overflow: hidden;
+      background: #050609;
+      aspect-ratio: 4/3;
+      border: 1px solid var(--border);
+    }
+
+    video { width:100%; height:100%; object-fit:cover; display:block; }
+    canvas.snap { width:100%; height:100%; object-fit:cover; display:none; position:absolute; top:0; left:0; }
+
+    .scanbar {
+      position: absolute; top:0; left:0; right:0; height:2px;
+      background: linear-gradient(90deg, transparent, var(--a1), transparent);
+      animation: scanmove 3s ease-in-out infinite; opacity:.4;
+    }
+    @keyframes scanmove { 0%{top:0} 50%{top:calc(100% - 2px)} 100%{top:0} }
+
+    .oval-guide {
+      position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+      width:110px; height:140px;
+      border:2px solid rgba(108,99,255,.4); border-radius:50%;
+      pointer-events:none;
+    }
+
+    /* ─── 入力 ─── */
+    label {
+      font-family:'DM Mono', monospace; font-size:10px; color:var(--muted);
+      letter-spacing:1.5px; text-transform:uppercase; display:block; margin-bottom:5px;
+    }
+
+    input[type="text"], input[type="url"], input[type="password"], input[type="number"] {
+      width:100%; background:var(--bg); border:1px solid var(--border); border-radius:7px;
+      color:var(--text); font-family:'Syne',sans-serif; font-size:14px;
+      padding:10px 13px; outline:none; transition:border-color .2s;
+    }
+    input:focus { border-color:var(--a1); }
+
+    /* ─── ボタン ─── */
+    .btn-row { display:flex; gap:8px; }
+
+    button {
+      font-family:'Syne',sans-serif; font-weight:600; font-size:13px;
+      border:none; border-radius:7px; padding:10px 16px; cursor:pointer;
+      transition:all .15s; flex:1;
+    }
+
+    .btn-primary { background:var(--a1); color:#fff; }
+    .btn-primary:hover { background:#5a52e0; transform:translateY(-1px); }
+
+    .btn-ghost { background:transparent; color:var(--muted); border:1px solid var(--border); }
+    .btn-ghost:hover { border-color:var(--a1); color:var(--text); }
+
+    .btn-verify {
+      background: linear-gradient(135deg, var(--a1), var(--a2));
+      color:#090a0e; font-weight:800; font-size:15px;
+    }
+    .btn-verify:hover { opacity:.88; transform:translateY(-1px); }
+
+    /* ─── 結果ボックス ─── */
+    .result {
+      border-radius:9px; padding:14px 16px; font-family:'DM Mono',monospace; font-size:12px;
+      min-height:64px; border:1px solid var(--border); background:var(--bg);
+      display:flex; flex-direction:column; gap:5px;
+    }
+    .result.ok  { border-color:var(--ok);  background:rgba(61,240,190,.05); }
+    .result.ng  { border-color:var(--ng);  background:rgba(240,95,95,.05); }
+    .result.ing { border-color:var(--warn); background:rgba(240,192,64,.05); }
+
+    .result-name { font-family:'Syne',sans-serif; font-size:22px; font-weight:800; color:var(--ok); }
+    .result-meta { font-size:11px; color:var(--muted); letter-spacing:.5px; }
+
+    /* ─── トークン表示 ─── */
+    .token-box {
+      background:var(--s2); border:1px solid var(--border); border-radius:7px;
+      padding:10px 12px; font-family:'DM Mono',monospace; font-size:10px;
+      color:var(--muted); word-break:break-all; cursor:pointer; transition:border-color .2s;
+    }
+    .token-box:hover { border-color:var(--a1); }
+    .token-label { font-size:9px; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:4px; }
+
+    /* ─── 右サイドバー ─── */
+    .side-section {
+      padding: 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .side-section:last-child { border-bottom: none; flex: 1; }
+
+    /* ─── ユーザーリスト ─── */
+    .user-list {
+      display:flex; flex-direction:column; gap:8px;
+      max-height: 320px; overflow-y:auto;
+    }
+
+    .user-item {
+      display:flex; align-items:center; gap:10px;
+      background:var(--s2); border:1px solid var(--border); border-radius:9px;
+      padding:8px 10px; transition:border-color .2s;
+    }
+    .user-item:hover { border-color:var(--a1); }
+
+    .user-avatar {
+      width:38px; height:38px; border-radius:50%; object-fit:cover;
+      background:var(--bg); border:1px solid var(--border); flex-shrink:0;
+    }
+
+    .user-avatar-placeholder {
+      width:38px; height:38px; border-radius:50%; background:var(--bg);
+      border:1px solid var(--border); display:flex; align-items:center;
+      justify-content:center; font-size:18px; flex-shrink:0; color:var(--muted);
+    }
+
+    .user-info { flex:1; min-width:0; }
+    .user-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .user-meta { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); }
+
+    .btn-del {
+      background:transparent; border:1px solid rgba(240,95,95,.25); color:var(--ng);
+      font-size:10px; padding:4px 8px; border-radius:4px; flex:0; cursor:pointer;
+      font-family:'DM Mono',monospace; letter-spacing:.5px;
+    }
+    .btn-del:hover { background:rgba(240,95,95,.1); }
+
+    /* ─── 設定パネル ─── */
+    .settings-grid { display:flex; flex-direction:column; gap:14px; }
+
+    .code-block {
+      background:var(--bg); border:1px solid var(--border); border-radius:7px;
+      padding:12px; font-family:'DM Mono',monospace; font-size:11px; color:var(--a2);
+      overflow-x:auto; white-space:pre;
+    }
+
+    .collapse-toggle {
+      background:none; border:none; color:var(--muted); font-family:'DM Mono',monospace;
+      font-size:11px; cursor:pointer; text-align:left; padding:0; letter-spacing:.5px;
+      display:flex; align-items:center; gap:6px; flex:0;
+    }
+    .collapse-toggle:hover { color:var(--text); }
+
+    .collapse-body { display:none; }
+    .collapse-body.open { display:block; }
+
+    .empty-state { color:var(--muted); font-family:'DM Mono',monospace; font-size:12px;
+                   text-align:center; padding:20px 0; letter-spacing:1px; }
+
+    @media (max-width:900px) {
+      .layout { grid-template-columns:1fr; }
+      .side-col { border-top:1px solid var(--border); }
+      .cam-row { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="eye"></div>
+    FACE AUTH
+  </div>
+  <div class="header-actions">
+    <div class="status-dot"></div>
+    <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">LIVE</span>
+    <button class="btn-sm" onclick="toggleSettings()">⚙ 設定</button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ── 左カラム ── -->
+  <div class="main-col">
+
+    <!-- カメラ2台並列 -->
+    <div class="cam-row">
+
+      <!-- 登録 -->
+      <div class="cam-card">
+        <div class="sec-title">
+          ユーザー登録
+          <span class="tag tag-purple">REGISTER</span>
+        </div>
+
+        <div class="cam-wrap">
+          <video id="regVideo" autoplay playsinline></video>
+          <canvas class="snap" id="regCanvas"></canvas>
+          <div class="scanbar"></div>
+          <div class="oval-guide"></div>
+        </div>
+
+        <div>
+          <label>氏名</label>
+          <input type="text" id="regName" placeholder="山田 太郎">
+        </div>
+
+        <div class="btn-row">
+          <button class="btn-ghost" onclick="captureReg()">📷 撮影</button>
+          <button class="btn-primary" onclick="registerUser()">登録</button>
+        </div>
+
+        <div class="result" id="regResult">
+          <span style="color:var(--muted)">氏名を入力→撮影→登録の順に操作してください</span>
+        </div>
+      </div>
+
+      <!-- 認証 -->
+      <div class="cam-card">
+        <div class="sec-title">
+          顔認証
+          <span class="tag tag-green">VERIFY</span>
+        </div>
+
+        <div class="cam-wrap">
+          <video id="verVideo" autoplay playsinline></video>
+          <div class="scanbar"></div>
+          <div class="oval-guide"></div>
+        </div>
+
+        <button class="btn-verify" onclick="verifyUser()">🔐 認証する</button>
+
+        <div class="result" id="verResult">
+          <span style="color:var(--muted)">カメラに顔を向けてボタンを押してください</span>
+        </div>
+
+        <!-- JWTトークン表示エリア -->
+        <div id="tokenArea" style="display:none">
+          <div class="token-box" onclick="copyToken()" title="クリックでコピー">
+            <div class="token-label">JWT TOKEN（クリックでコピー）</div>
+            <div id="tokenVal"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 外部連携コード例（折りたたみ） -->
+    <div>
+      <button class="collapse-toggle" onclick="toggleCollapse('embedDocs')">
+        <span id="embedArrow">▶</span> 外部連携・埋め込みコード例
+      </button>
+      <div class="collapse-body" id="embedDocs" style="margin-top:14px;display:flex;flex-direction:column;gap:14px;">
+
+        <div>
+          <label>① iframe で埋め込む</label>
+          <div class="code-block">&lt;iframe src="http://localhost:8000/embed"
+        width="360" height="340"
+        style="border:none;border-radius:12px"&gt;
+&lt;/iframe&gt;
+
+&lt;script&gt;
+window.addEventListener('message', function(e) {
+  if (e.data.type === 'face-auth-success') {
+    console.log('認証成功:', e.data.payload);
+    // e.data.payload.token でJWTを取得できる
+  }
+});
+&lt;/script&gt;</div>
+        </div>
+
+        <div>
+          <label>② JS ウィジェットとして埋め込む</label>
+          <div class="code-block">&lt;div id="face-auth-widget"&gt;&lt;/div&gt;
+&lt;script
+  src="http://localhost:8000/widget.js"
+  data-target="face-auth-widget"
+  data-on-success="onAuthSuccess"&gt;
+&lt;/script&gt;
+
+&lt;script&gt;
+function onAuthSuccess(result) {
+  // result.token, result.name, result.user_id, result.score
+  fetch('/your-app/login', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + result.token }
+  });
+}
+&lt;/script&gt;</div>
+        </div>
+
+        <div>
+          <label>③ APIを直接叩く（curl例）</label>
+          <div class="code-block">curl -X POST http://localhost:8000/verify \
+  -F "image=@face.jpg"
+
+# レスポンス例:
+# { "user_id":1, "name":"山田 太郎",
+#   "score":0.9234, "token":"eyJ..." }</div>
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- /main-col -->
+
+  <!-- ── 右サイドバー ── -->
+  <div class="side-col">
+
+    <!-- ユーザー一覧 -->
+    <div class="side-section" style="flex:1">
+      <div class="sec-title">
+        登録ユーザー
+        <span class="tag tag-gray" id="userCount">0名</span>
+      </div>
+      <div class="user-list" id="userList">
+        <div class="empty-state">NO USERS</div>
+      </div>
+    </div>
+
+    <!-- 設定パネル（デフォルト非表示） -->
+    <div class="side-section" id="settingsPanel" style="display:none">
+      <div class="sec-title">外部連携設定</div>
+      <div class="settings-grid">
+        <div>
+          <label>Webhook URL（認証成功時にPOST）</label>
+          <input type="url" id="cfgWebhook" placeholder="https://your-app.com/webhook">
+        </div>
+        <div>
+          <label>JWT 秘密鍵</label>
+          <input type="password" id="cfgSecret" placeholder="変更する場合のみ入力">
+        </div>
+        <div>
+          <label>JWT 有効期限（秒）</label>
+          <input type="number" id="cfgExpires" value="3600" min="60">
+        </div>
+        <button class="btn-primary" onclick="saveConfig()" style="flex:none">保存</button>
+        <div class="result" id="cfgResult" style="display:none"></div>
+      </div>
+    </div>
+
+  </div><!-- /side-col -->
+
+</div><!-- /layout -->
+
+<script>
+const API = 'http://localhost:8000';
+let regCaptured = null;
+let lastToken = '';
+
+/* ─── カメラ ─── */
+async function startCam(id) {
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ video:{ width:640, height:480 } });
+    document.getElementById(id).srcObject = s;
+  } catch(e) { console.error('カメラ起動失敗:', e); }
+}
+
+/* ─── 登録 ─── */
+function captureReg() {
+  const v = document.getElementById('regVideo');
+  const c = document.getElementById('regCanvas');
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0);
+  regCaptured = c.toDataURL('image/jpeg', 0.92);
+  c.style.display = 'block';
+  setResult('regResult', 'ing', '撮影完了。「登録」を押してください');
+}
+
+async function registerUser() {
+  const name = document.getElementById('regName').value.trim();
+  if (!name)        { setResult('regResult','ng','氏名を入力してください'); return; }
+  if (!regCaptured) { setResult('regResult','ng','先に撮影してください'); return; }
+  setResult('regResult','ing','登録中...');
+  try {
+    const fd = new FormData();
+    fd.append('name', name); fd.append('image', regCaptured);
+    const res = await fetch(`${API}/register`, { method:'POST', body:fd });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail);
+    setResult('regResult','ok', `✅ 登録完了：${d.name}（ID: ${d.user_id}）`);
+    document.getElementById('regName').value = '';
+    document.getElementById('regCanvas').style.display = 'none';
+    regCaptured = null;
+    loadUsers();
+  } catch(e) { setResult('regResult','ng','❌ ' + e.message); }
+}
+
+/* ─── 認証 ─── */
+async function verifyUser() {
+  const v = document.getElementById('verVideo');
+  const c = document.createElement('canvas');
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0);
+  setResult('verResult','ing','🔍 照合中...');
+  document.getElementById('tokenArea').style.display = 'none';
+  try {
+    const fd = new FormData();
+    fd.append('image', c.toDataURL('image/jpeg', 0.92));
+    const res = await fetch(`${API}/verify`, { method:'POST', body:fd });
+    const d = await res.json();
+    if (res.status === 401) { setResult('verResult','ng','❌ 認証失敗：一致するユーザーが見つかりません'); return; }
+    if (!res.ok) throw new Error(d.detail);
+    const el = document.getElementById('verResult');
+    el.className = 'result ok';
+    el.innerHTML = `
+      <div class="result-name">✓ ${d.name}</div>
+      <div class="result-meta">ID: ${d.user_id} &nbsp;|&nbsp; SCORE: ${(d.score*100).toFixed(1)}%</div>
+    `;
+    // JWT表示
+    if (d.token) {
+      lastToken = d.token;
+      document.getElementById('tokenVal').textContent = d.token.substring(0,60) + '...';
+      document.getElementById('tokenArea').style.display = 'block';
+    }
+  } catch(e) { setResult('verResult','ng','❌ ' + e.message); }
+}
+
+function copyToken() {
+  if (!lastToken) return;
+  navigator.clipboard.writeText(lastToken).then(() => {
+    const el = document.getElementById('tokenVal');
+    const orig = el.textContent;
+    el.textContent = 'コピーしました ✓';
+    setTimeout(() => { el.textContent = orig; }, 1500);
+  });
+}
+
+/* ─── ユーザー一覧 ─── */
+async function loadUsers() {
+  try {
+    const res = await fetch(`${API}/users`);
+    const users = await res.json();
+    document.getElementById('userCount').textContent = `${users.length}名`;
+    const list = document.getElementById('userList');
+    if (!users.length) { list.innerHTML = '<div class="empty-state">NO USERS</div>'; return; }
+    list.innerHTML = users.map(u => `
+      <div class="user-item">
+        ${u.photo_b64
+          ? `<img class="user-avatar" src="${u.photo_b64}" alt="${u.name}">`
+          : `<div class="user-avatar-placeholder">👤</div>`}
+        <div class="user-info">
+          <div class="user-name">${u.name}</div>
+          <div class="user-meta">#${u.user_id} · ${(u.created_at||'').slice(0,10)}</div>
+        </div>
+        <button class="btn-del" onclick="deleteUser(${u.user_id},'${u.name}')">DEL</button>
+      </div>
+    `).join('');
+  } catch(e) {
+    document.getElementById('userList').innerHTML = '<div class="empty-state">API未接続</div>';
+  }
+}
+
+async function deleteUser(id, name) {
+  if (!confirm(`「${name}」を削除しますか？`)) return;
+  await fetch(`${API}/users/${id}`, { method:'DELETE' });
+  loadUsers();
+}
+
+/* ─── 設定 ─── */
+function toggleSettings() {
+  const p = document.getElementById('settingsPanel');
+  const btn = document.querySelector('.btn-sm');
+  const visible = p.style.display !== 'none';
+  p.style.display = visible ? 'none' : 'block';
+  btn.classList.toggle('active', !visible);
+  if (!visible) loadConfigValues();
+}
+
+async function loadConfigValues() {
+  try {
+    const res = await fetch(`${API}/config`);
+    const c = await res.json();
+    document.getElementById('cfgWebhook').value = c.webhook_url || '';
+    document.getElementById('cfgExpires').value = c.jwt_expires_sec || 3600;
+  } catch(e) {}
+}
+
+async function saveConfig() {
+  const fd = new FormData();
+  const wh = document.getElementById('cfgWebhook').value.trim();
+  const sc = document.getElementById('cfgSecret').value.trim();
+  const ex = document.getElementById('cfgExpires').value;
+  if (wh) fd.append('webhook_url', wh);
+  if (sc) fd.append('jwt_secret', sc);
+  if (ex) fd.append('jwt_expires_sec', ex);
+  const r = document.getElementById('cfgResult');
+  r.style.display = 'flex';
+  try {
+    const res = await fetch(`${API}/config`, { method:'POST', body:fd });
+    const d = await res.json();
+    r.className = 'result ok'; r.textContent = '✅ ' + d.message;
+  } catch(e) { r.className = 'result ng'; r.textContent = '❌ ' + e.message; }
+}
+
+/* ─── 折りたたみ ─── */
+function toggleCollapse(id) {
+  const el = document.getElementById(id);
+  const arrow = document.getElementById('embedArrow');
+  const open = el.classList.toggle('open');
+  el.style.display = open ? 'flex' : 'none';
+  arrow.textContent = open ? '▼' : '▶';
+}
+
+/* ─── ユーティリティ ─── */
+function setResult(id, type, msg) {
+  const el = document.getElementById(id);
+  el.className = `result ${type}`;
+  el.textContent = msg;
+}
+
+/* ─── 初期化 ─── */
+window.addEventListener('load', () => {
+  startCam('regVideo');
+  startCam('verVideo');
+  loadUsers();
+});
+</script>
+</body>
+</html>

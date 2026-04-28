@@ -1,0 +1,8 @@
+[
+  "tests/test_matcher.py::TestFaceMatcher::test_ゼロベクトルは類似度0",
+  "tests/test_matcher.py::TestFaceMatcher::test_ユーザーなしはNone",
+  "tests/test_matcher.py::TestFaceMatcher::test_同一ベクトルは類似度1",
+  "tests/test_matcher.py::TestFaceMatcher::test_正しいユーザーが返る",
+  "tests/test_matcher.py::TestFaceMatcher::test_直交ベクトルは類似度0",
+  "tests/test_matcher.py::TestFaceMatcher::test_閾値未満は認証失敗"
+]
