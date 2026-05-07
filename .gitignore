@@ -1,0 +1,5 @@
+# Security: never commit biometric DB or logs
+face_auth.db
+logs/
+*.db
+*.sqlite
